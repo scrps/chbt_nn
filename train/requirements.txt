@@ -1,0 +1,12 @@
+# Pinned roughly; bump as needed. ROCm wheels for torch are NOT installed
+# from this file (you'd install them separately via the right --index-url).
+# See train/README.md.
+transformers>=4.43
+peft>=0.11
+trl>=0.9
+datasets>=2.20
+accelerate>=0.32
+bitsandbytes>=0.43
+sentencepiece>=0.2
+protobuf>=4.25
+tomli>=2.0; python_version<"3.11"

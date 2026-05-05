@@ -112,6 +112,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         tags = (cfg.routing_table.get("tags") or {})
         roles_by_model: dict[str, list[str]] = {}
         for tag, model in tags.items():
+            if not isinstance(model, str):
+                continue
             roles_by_model.setdefault(model, []).append(tag)
         out = []
         for m in models:

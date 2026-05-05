@@ -6,10 +6,32 @@ A local-only chatbot project, intended to run on a home server with a
 when explicitly enabled. Customizable with the user's own data, with a
 focus on producing long, well-structured replies.
 
-> **Status:** planning. No code yet.
->
-> The full plan and methodology lives in **[PLAN.md](./PLAN.md)** — please
-> review and comment there before any implementation starts.
+> **Status:** Phase 0–5 implementation landed. Methodology in **[PLAN.md](./PLAN.md)**.
+
+## Quick start
+
+```bash
+git clone <this repo> /opt/chbt_nn && cd /opt/chbt_nn
+./infra/bootstrap.sh        # ROCm/Vulkan + Ollama + base models + venv
+./infra/serve.sh            # local UI on http://127.0.0.1:8088/
+```
+
+See [`docs/runbook.md`](./docs/runbook.md) for day-to-day operations,
+[`docs/network.md`](./docs/network.md) for LAN exposure, and
+[`docs/training.md`](./docs/training.md) for fine-tuning.
+
+## Layout
+
+| path                 | what                                                |
+|----------------------|-----------------------------------------------------|
+| `infra/`             | bootstrap, systemd, Caddy/nftables, benchmarks      |
+| `serve/modelfiles/`  | Ollama Modelfiles for the four shortlisted bases    |
+| `serve/picker/`      | FastAPI backend + hand-rolled vanilla HTML/JS UI    |
+| `serve/scan.py`      | BYO model registration (`serve/models/`)            |
+| `rag/`               | ingest → chunk → embed (Ollama) → Chroma → query    |
+| `train/`             | data prep + QLoRA fine-tune + GGUF export per base  |
+| `eval/`              | side-by-side eval harness                           |
+| `data/`              | (gitignored) `train/`, `rag/`, `both/`              |
 
 ## TL;DR of the plan
 
