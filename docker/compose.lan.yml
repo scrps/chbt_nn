@@ -1,0 +1,86 @@
+# docker/compose.lan.yml — opt-in LAN exposure via Caddy + bearer token.
+#
+# Usage:
+#   1. Create the bearer token (one-off):
+#        ./docker/init-secrets.sh
+#   2. Bring up with the overlay AND the `lan` profile:
+#        docker compose \
+#          -f docker/compose.yml \
+#          -f docker/compose.lan.yml \
+#          --profile lan up -d
+#   3. Restrict access at the host firewall (nftables/ufw) to your LAN CIDR.
+#      The example file is at infra/nftables-lan.example.nft.
+#
+# Threat model when this overlay is on:
+#   * Caddy listens on 0.0.0.0:8443 (TLS, self-signed by default) and
+#     proxies to the picker over the docker `internal` network.
+#   * Every request must carry  Authorization: Bearer <token>  or it gets
+#     a 401 BEFORE reaching the picker.
+#   * The picker is REMOVED from the host port — only Caddy is reachable.
+#   * Ollama is still NOT exposed.
+
+secrets:
+  bearer_token:
+    file: ./secrets/bearer_token
+
+services:
+  # Override the picker so the host port goes away — only Caddy reaches it.
+  picker:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: chbt_nn_caddy
+    hostname: caddy
+    profiles:
+      - lan
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      # Caddy needs NET_BIND_SERVICE only if binding <1024. We bind 8443
+      # so this is unnecessary, but kept for documentation; remove freely.
+      - NET_BIND_SERVICE
+    pids_limit: 256
+    networks:
+      - internal     # to reach picker
+      - egress       # for ACME challenges if you ever swap self-signed for LE
+    ports:
+      - "8443:8443"  # TLS only. Plain HTTP is intentionally not exposed.
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - caddy_data:/data
+      - caddy_config:/config
+    secrets:
+      - source: bearer_token
+        target: bearer_token
+        mode: 0400
+    tmpfs:
+      - /tmp:size=8m,mode=1777,nosuid,nodev,noexec
+    depends_on:
+      picker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--no-check-certificate",
+             "https://127.0.0.1:8443/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          pids: 256
+
+volumes:
+  caddy_data:
+    name: chbt_nn_caddy_data
+  caddy_config:
+    name: chbt_nn_caddy_config

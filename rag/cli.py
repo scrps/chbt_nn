@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import hashlib
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,21 @@ from .store import VectorStore
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO_ROOT / "infra" / "serve.toml"
+
+
+def _resolve_path(value: str | None, env_var: str, default_rel: str) -> Path:
+    """Resolve a config path: env var wins, then config value, then default.
+
+    Absolute paths are honored as-is. Relative paths are anchored to
+    ``REPO_ROOT`` so behavior matches the native bring-up. Used so the
+    docker entrypoint can point chroma_dir / data_root at /var/lib volumes
+    without rewriting serve.toml.
+    """
+    raw = os.environ.get(env_var) or value or default_rel
+    p = Path(raw)
+    if p.is_absolute():
+        return p
+    return REPO_ROOT / p
 
 log = logging.getLogger("rag.cli")
 
@@ -82,21 +98,24 @@ async def _ingest(args) -> None:
     embed_model = args.embed_model or rag.get("embed_model", "nomic-embed-text")
     ollama_url = args.ollama_url or cfg.get("ollama", {}).get("url",
                                                               "http://127.0.0.1:11434")
-    chroma_dir = REPO_ROOT / (rag.get("chroma_dir") or "rag/.chroma")
-    data_root = REPO_ROOT / (rag.get("data_root") or "data/rag")
+    chroma_dir = _resolve_path(rag.get("chroma_dir"), "CHBT_NN_RAG_CHROMA_DIR", "rag/.chroma")
+    data_root = _resolve_path(rag.get("data_root"), "CHBT_NN_RAG_DATA_ROOT", "data/rag")
     include_both = bool(rag.get("include_both", True))
     chunk_tokens = int(rag.get("chunk_size_tokens", 800))
     overlap_tokens = int(rag.get("chunk_overlap_tokens", 100))
 
+    # `both/` lives next to the configured data_root by convention, so it
+    # follows the override too (handy in docker where /data is mounted).
+    data_dir_parent = data_root.parent
     roots = [data_root]
     if include_both:
-        roots.append(REPO_ROOT / "data" / "both")
+        roots.append(data_dir_parent / "both")
 
     log.info("ingest from %s into %s with %s",
              [str(r) for r in roots], chroma_dir, embed_model)
 
-    records = [r.asdict() for r in iter_records(roots, REPO_ROOT)]
-    records = _apply_manifest(records, REPO_ROOT / "data" / "manifest.toml")
+    records = [r.asdict() for r in iter_records(roots, data_dir_parent.parent)]
+    records = _apply_manifest(records, data_dir_parent / "manifest.toml")
     if not records:
         log.info("no records found.")
         return
@@ -139,11 +158,11 @@ def _watch(args) -> None:
     """Tiny polling watcher — re-runs ingest when any mtime under data_root changes."""
     cfg = _load_cfg()
     rag = cfg.get("rag", {})
-    data_root = REPO_ROOT / (rag.get("data_root") or "data/rag")
+    data_root = _resolve_path(rag.get("data_root"), "CHBT_NN_RAG_DATA_ROOT", "data/rag")
     include_both = bool(rag.get("include_both", True))
     roots = [data_root]
     if include_both:
-        roots.append(REPO_ROOT / "data" / "both")
+        roots.append(data_root.parent / "both")
 
     def fingerprint() -> tuple:
         out = []
@@ -174,7 +193,7 @@ def _watch(args) -> None:
 def _query(args) -> None:
     cfg = _load_cfg()
     rag = cfg.get("rag", {})
-    chroma_dir = REPO_ROOT / (rag.get("chroma_dir") or "rag/.chroma")
+    chroma_dir = _resolve_path(rag.get("chroma_dir"), "CHBT_NN_RAG_CHROMA_DIR", "rag/.chroma")
     embed_model = rag.get("embed_model", "nomic-embed-text")
     ollama_url = cfg.get("ollama", {}).get("url", "http://127.0.0.1:11434")
     retriever = Retriever(str(chroma_dir), embed_model, ollama_url)
@@ -191,7 +210,7 @@ def _query(args) -> None:
 def _stats(args) -> None:
     cfg = _load_cfg()
     rag = cfg.get("rag", {})
-    chroma_dir = REPO_ROOT / (rag.get("chroma_dir") or "rag/.chroma")
+    chroma_dir = _resolve_path(rag.get("chroma_dir"), "CHBT_NN_RAG_CHROMA_DIR", "rag/.chroma")
     s = VectorStore(chroma_dir)
     print(s.stats())
     for src in s.list_sources()[:20]:

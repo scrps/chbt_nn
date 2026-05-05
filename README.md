@@ -10,11 +10,26 @@ focus on producing long, well-structured replies.
 
 ## Quick start
 
+**Native (Arch/Debian/Fedora/openSUSE):**
+
 ```bash
 git clone <this repo> /opt/chbt_nn && cd /opt/chbt_nn
 ./infra/bootstrap.sh        # ROCm/Vulkan + Ollama + base models + venv
 ./infra/serve.sh            # local UI on http://127.0.0.1:8088/
 ```
+
+**Docker (CPU or AMD GPU):**
+
+```bash
+git clone <this repo> /opt/chbt_nn && cd /opt/chbt_nn
+docker compose -f docker/compose.yml up -d                   # CPU
+# or, with AMD ROCm GPU passthrough:
+docker compose -f docker/compose.yml -f docker/compose.gpu.yml up -d
+# UI on http://127.0.0.1:8088/
+```
+
+See [`docker/README.md`](./docker/README.md) for the threat model, RAG
+worker profile, and LAN exposure overlay.
 
 See [`docs/runbook.md`](./docs/runbook.md) for day-to-day operations,
 [`docs/network.md`](./docs/network.md) for LAN exposure, and

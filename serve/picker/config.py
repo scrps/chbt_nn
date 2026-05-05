@@ -117,11 +117,23 @@ def load(config_path: Path = DEFAULT_CONFIG_PATH,
         cfg.picker.port = int(v)
     if v := os.environ.get("CHBT_NN_OLLAMA_URL"):
         cfg.ollama.url = v
+    if v := os.environ.get("CHBT_NN_DB_PATH"):
+        cfg.picker.db_path = v
+    if v := os.environ.get("CHBT_NN_RAG_CHROMA_DIR"):
+        cfg.rag.chroma_dir = v
     return cfg
 
 
 def resolve_bind_addr(cfg: Config) -> str:
-    """Resolve cfg.picker.host based on network.expose policy."""
+    """Resolve cfg.picker.host based on network.expose policy.
+
+    The ``CHBT_NN_BIND`` env var (set by the docker entrypoint) wins
+    unconditionally — inside a container the host binding decision is made
+    by docker's port mapping, not by the picker.
+    """
+    forced = os.environ.get("CHBT_NN_BIND")
+    if forced:
+        return forced
     if cfg.network.expose == "localhost":
         return "127.0.0.1"
     # The picker stays on 127.0.0.1 even on LAN; Caddy fronts it.
