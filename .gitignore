@@ -1,0 +1,57 @@
+# --- Personal data and model weights are NEVER committed (PLAN.md §11) ---
+data/train/**
+data/rag/**
+data/both/**
+!data/train/.gitkeep
+!data/rag/.gitkeep
+!data/both/.gitkeep
+!data/manifest.toml.example
+
+# Vector store
+rag/.chroma/
+rag/.qdrant/
+**/chroma.sqlite3
+**/.chroma_cache/
+
+# BYO model drop-in dir (§4c)
+serve/models/**
+!serve/models/.gitkeep
+!serve/models/README.md
+
+# Trained adapters / merged weights / GGUF outputs
+train/runs/
+train/out/
+train/.cache/
+*.gguf
+*.safetensors
+adapter_model.bin
+adapter_config.json
+
+# Eval results
+eval/results/
+
+# Picker runtime state
+serve/picker/.state/
+serve/picker/conversations.sqlite*
+
+# Bearer token files
+infra/.token
+/etc/chbt_nn/
+
+# --- Standard ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.envrc
+.vscode/
+.idea/
+.DS_Store
+*.log
+*.tmp
+node_modules/
+dist/
+build/
+docker/secrets/

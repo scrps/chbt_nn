@@ -1,0 +1,38 @@
+# docker/compose.gpu.yml — AMD ROCm GPU passthrough overlay for ollama.
+#
+# Usage:
+#   docker compose -f docker/compose.yml -f docker/compose.gpu.yml up -d
+#
+# Requirements on the host:
+#   * Working AMD ROCm stack (kernel `amdgpu` driver, /dev/kfd, /dev/dri).
+#   * Your user is in the `video` and `render` groups (or the daemon runs as
+#     root and you accept that — preferred is rootless docker + group_add).
+#   * Confirm with `ls -l /dev/kfd /dev/dri/render*` from the host.
+#
+# Why we don't pass through devices in the base file:
+#   Some users will run CPU-only or Vulkan-only first; mandatory device
+#   passthrough would make `compose up` fail on those hosts.
+#
+# Security trade-offs of this overlay (read carefully):
+#   * /dev/kfd and /dev/dri/* are passed in. Anything in the container that
+#     can talk to those devices can submit GPU work. We mitigate by keeping
+#     only ollama on this network — the picker has no GPU access.
+#   * `group_add: video, render` only adds *supplementary* groups; the
+#     ollama container still runs as the user the upstream image picks.
+#     We do NOT add SYS_ADMIN or any extra capabilities.
+
+services:
+  ollama:
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add:
+      # Numeric GIDs would be more portable, but `video` (44) and `render`
+      # (varies per distro: 109/110/989/...) differ enough that names are
+      # safer; docker resolves them inside the container's /etc/group.
+      - "video"
+      - "render"
+    environment:
+      # Hint ROCm where to find /opt/rocm at runtime in the upstream image.
+      HSA_OVERRIDE_GFX_VERSION: "10.3.0"   # 6900 XT / RDNA2; override per GPU
+      HCC_AMDGPU_TARGETS: "gfx1030"

@@ -1,0 +1,78 @@
+# chbt_nn server config (PLAN.md §9).
+#
+# Default is localhost-only. Flip `expose` to "lan" to bind to the LAN IP and
+# put Ollama behind a reverse proxy with a bearer token.
+
+[network]
+# "localhost" | "lan" | "lan-open"
+#   localhost  -> bind 127.0.0.1 only. Default. Nothing exposed off-host.
+#   lan        -> bind LAN IP, force a reverse proxy with a bearer token in
+#                 `bearer_token_file`, and add an nftables/ufw rule restricting
+#                 the proxy port to the LAN subnet.
+#   lan-open   -> bind LAN IP, NO auth. NOT RECOMMENDED.
+expose = "localhost"
+
+# When expose != "localhost":
+#   "auto"        -> auto-detect the primary LAN IP
+#   "192.168.x.y" -> bind explicitly
+bind_addr = "auto"
+
+# Restrict access to this CIDR when expose is "lan" (auto-detected if "auto").
+lan_cidr = "auto"
+
+# File containing the bearer token (created on first run when missing).
+# A 32-byte hex string is generated.
+bearer_token_file = "/etc/chbt_nn/token"
+
+# Reverse proxy port (Caddy). Ollama and the picker remain bound to 127.0.0.1
+# regardless; the proxy is the only thing on the LAN IP.
+proxy_port = 8080
+
+[ollama]
+# URL the picker uses to talk to Ollama. Always loopback.
+url = "http://127.0.0.1:11434"
+
+# Where Ollama stores its blobs. Override if you put models on a separate disk.
+# (Set the OLLAMA_MODELS env var; this is just for documentation.)
+# models_dir = "/var/lib/ollama"
+
+# Default backend. "vulkan" is the simplest path on AMD; "rocm" if you've set
+# up the ROCm stack and want best perf. The bootstrap script can install both.
+backend = "vulkan"
+
+[picker]
+# The local UI. Always bound to 127.0.0.1; reach it via the proxy on LAN.
+host = "127.0.0.1"
+port = 8088
+
+# SQLite DB for conversations. Relative paths are resolved from the repo root.
+db_path = "serve/picker/.state/conversations.sqlite"
+
+# Default model when a new conversation is created. Must match a tag visible
+# to Ollama (see `ollama list`).
+default_model = "llama3.1-8b-instruct-mine"
+
+# Fall back to this if `default_model` isn't installed yet.
+fallback_model = "llama3.1:8b-instruct-q4_K_M"
+
+[rag]
+enabled = true
+# Embedding model served via Ollama.
+embed_model = "nomic-embed-text"
+# Where the vector store lives on disk.
+chroma_dir = "rag/.chroma"
+# Source root that the watcher / ingester reads.
+data_root = "data/rag"
+# Also fold in data/both/ on ingest.
+include_both = true
+# Default top-k for retrieval.
+top_k = 6
+# Chunk sizing.
+chunk_size_tokens = 800
+chunk_overlap_tokens = 100
+
+[router]
+# Auto-router (PLAN.md §4b option 3). Off until phase 6.
+enabled = false
+# Model used to classify incoming messages. Pick the cheapest loaded model.
+classifier_model = "mistral-7b-instruct"

@@ -1,0 +1,19 @@
+# Per-folder behavior overrides (PLAN.md §6a).
+#
+# Default behavior is determined by which top-level folder a file lives under:
+#   data/train/  -> fine-tune only
+#   data/rag/    -> RAG only
+#   data/both/   -> both pipelines
+#
+# This file lets you override that on a per-subfolder basis. Paths are relative
+# to data/. Glob patterns are supported. Later rules win.
+
+[[override]]
+# Example: a folder under train/ that should actually be RAG-only.
+path = "train/specsheets"
+mode = "rag"  # one of: "train", "rag", "both", "ignore"
+
+[[override]]
+# Example: ignore a noisy folder entirely.
+path = "rag/junk/**"
+mode = "ignore"

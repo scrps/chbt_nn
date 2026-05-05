@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+httpx>=0.27
+pydantic>=2.6
+# tomllib is in the stdlib (3.11+); keep tomli for 3.10 compat just in case
+tomli>=2.0; python_version<"3.11"
+# RAG bridge talks to chroma via the rag/ package

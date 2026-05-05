@@ -1,0 +1,84 @@
+# docker/Caddyfile — used by the optional `caddy` service in compose.lan.yml.
+#
+# Posture:
+#   * TLS on :8443. Self-signed by Caddy's internal CA (ok for LAN; trust the
+#     root CA on each client device, OR replace with your own cert).
+#   * Bearer-token auth in front of EVERYTHING except /healthz.
+#   * Strict request limits to make the picker harder to wedge.
+#   * No directory listings, no admin API exposed to the network.
+
+{
+    # Disable the admin endpoint on the network — keep it on a unix socket
+    # only inside the container. Prevents config exfiltration if someone
+    # punches through.
+    admin unix//tmp/caddy-admin.sock
+    # Self-signed internal CA. Swap for `tls you@example.com` to use Let's
+    # Encrypt if you ever expose this beyond LAN (don't).
+    auto_https disable_redirects
+    servers {
+        protocols h1 h2
+        # Drop slow-loris-style connections.
+        timeouts {
+            read_body   30s
+            read_header 10s
+            write       60s
+            idle        120s
+        }
+    }
+}
+
+(secure_headers) {
+    header {
+        # Defensive headers; the picker UI is same-origin so no CORS needed.
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "no-referrer"
+        Content-Security-Policy   "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'"
+        # Remove the server banner.
+        -Server
+    }
+}
+
+:8443 {
+    tls internal
+
+    # Liveness — no auth, returns plain text.
+    handle /healthz {
+        respond "ok" 200
+    }
+
+    # Everything else: bearer token required.
+    @authed header Authorization "Bearer {file./run/secrets/bearer_token}"
+    handle {
+        import secure_headers
+        # Reject anything without a valid Authorization header.
+        @missing not header Authorization "Bearer {file./run/secrets/bearer_token}"
+        respond @missing "unauthorized" 401 {
+            close
+        }
+        reverse_proxy picker:8088 {
+            # Don't pass our auth header upstream.
+            header_up -Authorization
+            # Picker streams SSE; disable buffering.
+            flush_interval -1
+            transport http {
+                read_buffer  16KB
+                write_buffer 16KB
+                # The picker has no upstream TLS — it's the docker internal net.
+            }
+        }
+    }
+
+    # Modest request size cap. Bump if you upload large RAG files via UI.
+    request_body {
+        max_size 8MB
+    }
+
+    log {
+        output stderr
+        format console
+        # Don't log Authorization headers.
+        level WARN
+    }
+}

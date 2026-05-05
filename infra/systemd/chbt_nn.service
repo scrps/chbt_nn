@@ -1,0 +1,22 @@
+[Unit]
+Description=chbt_nn local chatbot picker
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User/Group/WorkingDirectory to your install location.
+User=%i
+WorkingDirectory=/opt/chbt_nn
+Environment=HSA_OVERRIDE_GFX_VERSION=10.3.0
+ExecStart=/opt/chbt_nn/infra/serve.sh
+Restart=on-failure
+RestartSec=3
+# The picker binds 127.0.0.1 by default; LAN exposure is via the Caddy unit.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/chbt_nn/serve/picker/.state /opt/chbt_nn/rag/.chroma
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,26 @@
+# infra/nftables-lan.example.nft
+#
+# Restrict the picker's reverse-proxy port to the LAN subnet (PLAN.md §9).
+# Auto-derived by `bootstrap.sh` when `expose = "lan"`. Edit LAN_CIDR and
+# PROXY_PORT to match your environment, then load with:
+#   sudo nft -f /etc/nftables.d/chbt_nn.nft
+#
+# This file assumes you already have a sane base ruleset; it just adds the
+# rules needed to allow the LAN and drop everything else.
+
+define LAN_CIDR    = 192.168.1.0/24
+define PROXY_PORT  = 8080
+
+table inet chbt_nn {
+    chain input {
+        type filter hook input priority 0; policy accept;
+
+        # Allow LAN access to the proxy.
+        ip saddr $LAN_CIDR tcp dport $PROXY_PORT accept
+        # Drop everyone else hitting the proxy port.
+        tcp dport $PROXY_PORT drop
+
+        # Loopback always free; that's where Ollama and the picker actually live.
+        iifname "lo" accept
+    }
+}

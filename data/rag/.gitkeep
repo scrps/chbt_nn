@@ -1,0 +1,3 @@
+# RAG corpus — feeds the vector store, never trained on. See PLAN.md §6a, §8.
+# Subfolders are free-form (specsheets/, datasheets/, code/, ...).
+# Contents are gitignored.

@@ -1,0 +1,44 @@
+# --- never ship ---
+.git/
+.github/
+.venv/
+venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+
+# user data and weights — explicitly NOT in the image
+data/
+serve/models/*
+!serve/models/.gitkeep
+!serve/models/README.md
+rag/.chroma/
+rag/.qdrant/
+serve/picker/.state/
+train/runs/
+train/out/
+train/.cache/
+*.gguf
+*.safetensors
+
+# eval results
+eval/results/
+
+# secrets / local config
+infra/.token
+.env
+.envrc
+
+# editor cruft
+.vscode/
+.idea/
+.DS_Store
+*.log
+*.tmp
+
+# heavy stuff that doesn't belong in the runtime image
+docs/
+PLAN.md
+*.md
+!README.md
+!docker/README.md

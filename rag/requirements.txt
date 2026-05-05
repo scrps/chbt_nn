@@ -1,0 +1,9 @@
+chromadb>=0.5
+httpx>=0.27
+# Optional loaders. Picker doesn't need them; only `rag.ingest` does.
+pypdf>=4.0          ; python_version>="3.9"
+beautifulsoup4>=4.12
+markdown-it-py>=3.0
+python-docx>=1.1
+# Stdlib tomllib used on 3.11+; fallback for older python.
+tomli>=2.0; python_version<"3.11"

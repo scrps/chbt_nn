@@ -1,0 +1,216 @@
+# docker/compose.yml — chbt_nn base stack.
+#
+# Default posture (this file alone):
+#   * Three services on a single internal network: ollama, picker, rag-watcher.
+#   * Picker is published ONLY on 127.0.0.1:8088 of the host (loopback bind).
+#     Nothing is reachable from the LAN.
+#   * rag-watcher is opt-in via `--profile rag`.
+#   * No GPU. CPU inference works for sanity testing; layer the gpu overlay
+#     for real performance: -f compose.yml -f compose.gpu.yml
+#   * No internet egress for picker / rag-watcher. ollama keeps egress so it
+#     can pull base models on demand.
+#
+# Bring-up:
+#   docker compose -f docker/compose.yml up -d
+#   docker compose -f docker/compose.yml --profile rag up -d
+#
+# With AMD GPU + LAN exposure:
+#   docker compose \
+#       -f docker/compose.yml \
+#       -f docker/compose.gpu.yml \
+#       -f docker/compose.lan.yml \
+#       --profile rag --profile lan up -d
+#
+# All services share these hardening defaults via the `x-hardened` anchor.
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true
+  security_opt:
+    - "no-new-privileges:true"
+  cap_drop:
+    - ALL
+  ulimits:
+    nofile:
+      soft: 1024
+      hard: 4096
+  labels:
+    - "com.chbt_nn.managed=true"
+
+networks:
+  # `egress`: has the default internet route. Only ollama is attached.
+  # This is the only path out of the stack to the wider internet (so ollama
+  # can `ollama pull`).
+  egress:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: chbt_egress
+  # `internal`: no gateway to the host or internet. Picker, rag-watcher
+  # and ollama all sit here. Picker is ONLY on this network → it cannot
+  # reach the internet at all.
+  internal:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: chbt_internal
+
+volumes:
+  ollama_models:
+    name: chbt_nn_ollama_models
+  picker_state:
+    name: chbt_nn_picker_state
+  rag_chroma:
+    name: chbt_nn_rag_chroma
+
+# Docker secrets used by the lan overlay live there. The base stack has none.
+
+services:
+  # -----------------------------------------------------------------------
+  # Ollama: model server. Official upstream image.
+  # -----------------------------------------------------------------------
+  ollama:
+    <<: *hardened
+    image: ollama/ollama:0.5.7
+    container_name: chbt_nn_ollama
+    hostname: ollama
+    networks:
+      - egress       # for `ollama pull`
+      - internal     # so picker/rag can talk to it
+    # NOT bound to a host port. Other services reach it at http://ollama:11434
+    # over the internal docker network.
+    expose:
+      - "11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_KEEP_ALIVE: "30m"
+      # Tighten origins; the picker calls Ollama from within the docker net,
+      # the host doesn't need it.
+      OLLAMA_ORIGINS: "http://picker"
+    # Ollama needs to write to its model dir; root FS stays read-only and we
+    # give it a tmpfs for /tmp.
+    tmpfs:
+      - /tmp:size=64m,mode=1777,nosuid,nodev,noexec
+    # Ollama still needs CAP_SYS_ADMIN for some GPU paths in the upstream
+    # image; we leave caps off here and add only what's needed in the
+    # compose.gpu.yml overlay.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "3", "http://127.0.0.1:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          # Memory limit only — CPUs unrestricted so model loads aren't slow.
+          # Bump if you load big models.
+          memory: 24g
+          pids: 4096
+
+  # -----------------------------------------------------------------------
+  # Picker: FastAPI + local UI. Only thing the user is meant to talk to.
+  # -----------------------------------------------------------------------
+  picker:
+    <<: *hardened
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: chbt_nn/app:latest
+    container_name: chbt_nn_picker
+    hostname: picker
+    command: ["picker"]
+    user: "10001:10001"
+    networks:
+      - internal     # picker has NO route to the internet; only to ollama
+                     # via the internal bridge.
+    # Default: only loopback on the host. The lan overlay swaps this for
+    # caddy-fronted exposure.
+    ports:
+      - "127.0.0.1:8088:8088"
+    volumes:
+      # Persistent picker state (sqlite conversations DB).
+      - picker_state:/var/lib/chbt_nn
+      # User content. Read-only into the picker — the picker never writes to
+      # data/. Editable from the host.
+      - type: bind
+        source: ../data
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: true
+      # BYO model drop-in dir (read-only — picker uses scan.py to *register*
+      # them with ollama, not to mutate them).
+      - type: bind
+        source: ../serve/models
+        target: /app/serve/models
+        read_only: true
+        bind:
+          create_host_path: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777,nosuid,nodev,noexec
+    environment:
+      CHBT_NN_BIND: "0.0.0.0"
+      CHBT_NN_PORT: "8088"
+      CHBT_NN_OLLAMA_URL: "http://ollama:11434"
+      CHBT_NN_DB_PATH: "/var/lib/chbt_nn/conversations.sqlite"
+      CHBT_NN_RAG_CHROMA_DIR: "/var/lib/chbt_nn/chroma"
+      CHBT_NN_RAG_DATA_ROOT: "/data/rag"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/chbt-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          pids: 1024
+
+  # -----------------------------------------------------------------------
+  # RAG watcher: re-ingests data/rag/ on changes. Opt-in via `--profile rag`.
+  # -----------------------------------------------------------------------
+  rag-watcher:
+    <<: *hardened
+    image: chbt_nn/app:latest
+    container_name: chbt_nn_rag
+    hostname: rag-watcher
+    profiles:
+      - rag
+    command: ["rag-watch"]
+    user: "10001:10001"
+    networks:
+      - internal
+    volumes:
+      - rag_chroma:/var/lib/chbt_nn
+      - type: bind
+        source: ../data
+        target: /data
+        read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777,nosuid,nodev,noexec
+    environment:
+      CHBT_NN_OLLAMA_URL: "http://ollama:11434"
+      CHBT_NN_RAG_CHROMA_DIR: "/var/lib/chbt_nn/chroma"
+      CHBT_NN_RAG_DATA_ROOT: "/data/rag"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          pids: 1024
+    # No published ports — this is a background worker.
+
+# Note on internet egress:
+#   * Picker and rag-watcher are on `internal` only — no outbound internet.
+#   * Ollama is on `internal` AND `egress` so it can pull base models.
+#   * To fully air-gap after the first model pull, edit `egress`:
+#       internal: true
+#     and pre-seed the chbt_nn_ollama_models volume from a host with internet.

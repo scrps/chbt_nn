@@ -1,0 +1,35 @@
+# infra/Caddyfile.example
+#
+# Reverse proxy in front of the picker for LAN exposure (PLAN.md §9).
+# When `infra/serve.toml` has expose = "lan", bootstrap.sh installs Caddy and
+# expects this Caddyfile (with substitutions) at /etc/caddy/Caddyfile.
+#
+# Replace:
+#   {$LAN_BIND}      -> the LAN IP/hostname Caddy should listen on (e.g. 192.168.1.42)
+#   {$PROXY_PORT}    -> infra/serve.toml [network] proxy_port
+#   {$TOKEN}         -> contents of bearer_token_file (read at startup; do
+#                       NOT inline the token in the Caddyfile in production —
+#                       use Caddy's `import` or env-vars instead).
+
+{$LAN_BIND}:{$PROXY_PORT} {
+    # No TLS — this is LAN-only. Add `tls internal` if you want a self-signed cert.
+
+    # Require bearer token. Set `lan-open` in serve.toml to drop this block.
+    @noauth not header Authorization "Bearer {$TOKEN}"
+    respond @noauth "unauthorized" 401
+
+    # Picker UI + API.
+    reverse_proxy 127.0.0.1:8088
+
+    # Optional: if you also want to expose Ollama directly (e.g. for an
+    # OpenAI-compatible client on a phone), uncomment:
+    # handle_path /ollama/* {
+    #     reverse_proxy 127.0.0.1:11434
+    # }
+
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/chbt_nn.log
+        format json
+    }
+}

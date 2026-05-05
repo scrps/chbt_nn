@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>chbt_nn</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <aside id="sidebar">
+    <header>
+      <h1>chbt_nn</h1>
+      <button id="new-conv" title="New conversation">＋</button>
+    </header>
+    <ul id="conv-list" aria-label="conversations"></ul>
+    <footer>
+      <div id="health" class="muted">…</div>
+    </footer>
+  </aside>
+
+  <main id="main">
+    <header id="conv-header">
+      <input id="conv-title" type="text" placeholder="Untitled" />
+      <div class="controls">
+        <label class="ctrl">
+          <span>model</span>
+          <select id="model-select" aria-label="model"></select>
+        </label>
+        <label class="ctrl">
+          <input type="checkbox" id="rag-toggle" />
+          <span>RAG</span>
+        </label>
+        <select id="rag-filter" aria-label="rag subfolder filter" multiple size="1"></select>
+        <button id="delete-conv" class="danger" title="Delete conversation">🗑</button>
+      </div>
+    </header>
+
+    <section id="messages" aria-live="polite"></section>
+
+    <form id="composer">
+      <textarea id="composer-input" rows="3"
+                placeholder="Type a message. Shift+Enter for newline, Enter to send."></textarea>
+      <button id="send" type="submit">Send</button>
+      <button id="stop" type="button" hidden>Stop</button>
+    </form>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
