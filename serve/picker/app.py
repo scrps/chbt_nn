@@ -219,6 +219,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         async def event_stream():
             full = []
+            cancelled = False
             try:
                 yield _sse({"event": "start", "model": model, "sources": sources})
                 async for chunk in request.app.state.ollama.chat_stream(model, oai_messages):
@@ -236,17 +237,22 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                         })
                         break
             except asyncio.CancelledError:
-                # Client disconnected; persist whatever we have.
-                pass
-            except Exception as e:  # pragma: no cover
+                # Client disconnected; persist whatever we have, then re-raise
+                # so cancellation propagates per asyncio convention.
+                cancelled = True
+            except Exception:  # pragma: no cover
                 log.exception("chat stream failed")
-                yield _sse({"event": "error", "message": str(e)})
+                # Don't leak the exception text/trace to the browser.
+                yield _sse({"event": "error",
+                            "message": "internal error; see server logs"})
             finally:
                 if full:
                     store.add_message(
                         cid, "assistant", "".join(full), model=model,
                         sources=sources or None,
                     )
+                if cancelled:
+                    raise asyncio.CancelledError()
 
         return StreamingResponse(event_stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache",
