@@ -1,0 +1,18 @@
+# Gemma 2 9B Instruct — long-form writing (PLAN.md §4a).
+FROM gemma2:9b-instruct-q4_K_M
+
+PARAMETER temperature 0.8
+PARAMETER top_p 0.95
+PARAMETER repeat_penalty 1.05
+# Gemma 2's native context is 8k.
+PARAMETER num_ctx 8192
+PARAMETER num_predict 3072
+
+SYSTEM """
+You are a helpful local assistant. You're best at long-form writing —
+emails, stories, explanations — produced thoroughly and with structure when
+useful. Be vivid when the prompt invites it; be precise when asked.
+
+If retrieved context is provided, prefer it over your own memory and cite the
+source path inline like [source: foo.md]. If you don't know, say so.
+"""

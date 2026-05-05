@@ -1,0 +1,27 @@
+# serve/routing.toml — task → model mapping for the (optional) auto-router.
+# PLAN.md §4b. The picker UI exposes a manual override; this is only used
+# when [router] enabled = true in infra/serve.toml.
+
+# Default is whatever the picker's `default_model` is.
+default = "llama3.1-8b-instruct-mine"
+
+# Tag-based routing. The classifier (see infra/serve.toml [router]) returns
+# one of these tags for an incoming user message.
+[tags]
+chat       = "llama3.1-8b-instruct-mine"
+longform   = "gemma2-9b-instruct"
+code       = "qwen2.5-7b-instruct"
+factlookup = "qwen2.5-7b-instruct"
+story      = "llama3.1-8b-instruct-mine"
+quick      = "mistral-7b-instruct"
+
+# Per-conversation overrides take precedence over auto-routing. They live in
+# the conversations DB (set via the UI), not here.
+
+# Fallback chain — if the chosen model isn't installed, try these in order.
+fallback = [
+  "llama3.1-8b-instruct",
+  "qwen2.5-7b-instruct",
+  "mistral-7b-instruct",
+  "llama3.1:8b-instruct-q4_K_M",
+]
